@@ -14,6 +14,7 @@ from toolkit.samplers.custom_flowmatch_sampler import (
     CustomFlowMatchEulerDiscreteScheduler,
 )
 from toolkit.accelerator import get_accelerator, unwrap_model
+from toolkit.util.attention_mask import drop_all_true_mask
 from optimum.quanto import freeze, QTensor
 import torch.nn.functional as F
 
@@ -382,7 +383,7 @@ class QwenImageEditPlusModel(QwenImageModel):
             timestep=(timestep / 1000).detach(),
             guidance=None,
             encoder_hidden_states=enc_hs.detach(),
-            encoder_hidden_states_mask=prompt_embeds_mask.detach(),
+            encoder_hidden_states_mask=drop_all_true_mask(prompt_embeds_mask),
             img_shapes=img_shapes,
             return_dict=False,
             **kwargs,
