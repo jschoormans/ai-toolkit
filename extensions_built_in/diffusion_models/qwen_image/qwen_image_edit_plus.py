@@ -15,7 +15,7 @@ from toolkit.samplers.custom_flowmatch_sampler import (
 )
 from toolkit.accelerator import get_accelerator, unwrap_model
 from optimum.quanto import freeze, QTensor
-from toolkit.util.vl_images import tensor_to_vl_pil
+from toolkit.util.vl_images import tensor_to_vl_pil, vl_condition_size
 import torch.nn.functional as F
 
 from diffusers import (
@@ -39,6 +39,19 @@ except ImportError:
     raise ImportError(
         "Diffusers is out of date. Update diffusers to the latest version by doing 'pip uninstall diffusers' and then 'pip install -r requirements.txt'"
     )
+
+
+def _aitk_condition_image_size() -> int:
+    """Pixel area (px^2) of the condition image the Qwen2.5-VL text encoder sees.
+
+    Defaults to the diffusers CONDITION_IMAGE_SIZE (384x384). Override with
+    model_kwargs.condition_image_size (e.g. 262144 for 512x512), which __init__ bridges to the
+    env var AITK_QWEN_CONDITION_IMAGE_SIZE so the sampling pipeline uses the same value.
+    """
+    try:
+        return int(os.environ["AITK_QWEN_CONDITION_IMAGE_SIZE"])
+    except (KeyError, ValueError):
+        return CONDITION_IMAGE_SIZE
 
 
 class QwenImageEditPlusModel(QwenImageModel):
@@ -68,6 +81,12 @@ class QwenImageEditPlusModel(QwenImageModel):
         self.has_multiple_control_images = True
         # do not resize control images
         self.use_raw_control_images = True
+
+        # VL condition-image resolution override, bridged through an env var so the
+        # training encode path and the sampling pipeline use the same value
+        condition_image_size = (model_config.model_kwargs or {}).get("condition_image_size")
+        if condition_image_size is not None:
+            os.environ["AITK_QWEN_CONDITION_IMAGE_SIZE"] = str(int(condition_image_size))
 
     def load_model(self):
         super().load_model()
@@ -207,15 +226,14 @@ class QwenImageEditPlusModel(QwenImageModel):
                 if len(batch_control_images[i].shape) == 3:
                     batch_control_images[i] = batch_control_images[i].unsqueeze(0)
                 # control images are 0 - 1 scale, shape (bs, ch, height, width)
-                ratio = batch_control_images[i].shape[2] / batch_control_images[i].shape[3]
-                height = math.sqrt(CONDITION_IMAGE_SIZE * ratio)
-                width = height / ratio
-
-                width = round(width / 32) * 32
-                height = round(height / 32) * 32
+                height, width = vl_condition_size(
+                    batch_control_images[i].shape[2],
+                    batch_control_images[i].shape[3],
+                    _aitk_condition_image_size(),
+                )
 
                 # the VL processor expects 0-255 images and rescales by 1/255 itself,
-                # so hand it a uint8 PIL image rather than a 0-1 tensor
+                # so hand it a uint8 PIL image at the condition size rather than a 0-1 tensor
                 batch_control_images[i] = tensor_to_vl_pil(
                     batch_control_images[i], height, width
                 )

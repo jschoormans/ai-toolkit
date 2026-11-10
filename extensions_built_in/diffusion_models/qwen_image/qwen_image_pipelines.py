@@ -1,5 +1,7 @@
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import os
+
 import numpy as np
 import torch
 
@@ -103,7 +105,8 @@ class QwenImageEditPlusCustomPipeline(QwenImageEditPlusPipeline):
             for img in image:
                 image_width, image_height = img.size
                 condition_width, condition_height = calculate_dimensions(
-                    CONDITION_IMAGE_SIZE, image_width / image_height
+                    int(os.environ.get("AITK_QWEN_CONDITION_IMAGE_SIZE", CONDITION_IMAGE_SIZE)),
+                    image_width / image_height,
                 )
                 vae_width, vae_height = calculate_dimensions(
                     VAE_IMAGE_SIZE, image_width / image_height

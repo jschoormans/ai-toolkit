@@ -1,5 +1,18 @@
+import math
+
 import torch
 from PIL import Image
+
+
+def vl_condition_size(img_height: int, img_width: int, condition_image_size: int) -> tuple:
+    """(height, width) of the VL condition image: area about condition_image_size px^2, the input's aspect ratio, multiples of 32.
+
+    Same rule as diffusers' calculate_dimensions in the Qwen-Image-Edit-Plus pipeline.
+    """
+    ratio = img_height / img_width
+    height = math.sqrt(condition_image_size * ratio)
+    width = height / ratio
+    return round(height / 32) * 32, round(width / 32) * 32
 
 
 def tensor_to_vl_pil(img: torch.Tensor, height: int, width: int) -> Image.Image:
